@@ -3,11 +3,11 @@
 # make sure directory paths exist before running script
 #!/bin/bash
 #$ -S /bin/bash
-#$ -pe smp 8
+#$ -pe smp 4
 #$ -cwd
 #$ -N hisat2-array
 #$ -j y
-#$ -l h_vmem=19G
+#$ -l h_vmem=2G
 #$ -t 1-90
 
 
