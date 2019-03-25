@@ -168,18 +168,26 @@ dfData$fBatch = dfData$fTreatment:dfData$fTime
 densityplot(~ values | ind, groups=fBatch, data=dfData, auto.key = list(columns=3))
 
 # format data for modelling
-dfData$Coef = factor(dfData$fBatch:dfData$ind)
-#dfData$Coef.adj1 = factor(dfData$fAdjust1:dfData$ind)
+dfData$Coef.1 = factor(dfData$fTreatment:dfData$ind)
+dfData$Coef.2 = factor(dfData$fTime:dfData$ind)
+dfData$Coef.int = factor(dfData$Coef.1:dfData$Coef.2)
 
 str(dfData)
 
-fit.lme1 = lmer(values ~ 1  + (1 | Coef), data=dfData)
-summary(fit.lme1)
+fit.lme1 = lmer(values ~ 1  + (1 | Coef.1), data=dfData)
+fit.lme2 = lmer(values ~ 1  + (1 | Coef.1) + (1 | Coef.2), data=dfData)
+fit.lme3 = lmer(values ~ 1  + (1 | Coef.1) + (1 | Coef.2) + (1 | Coef.int), data=dfData)
+fit.lme4 = lmer(values ~ 1  + (1 | Coef.int), data=dfData)
 
-plot((fitted(fit.lme1)), resid(fit.lme1), pch=20, cex=0.7)
-lines(lowess((fitted(fit.lme1)), resid(fit.lme1)), col=2)
+anova(fit.lme1, fit.lme2, fit.lme3, fit.lme4)
+
+summary(fit.lme4)
+summary(fit.lme3)
+
+plot((fitted(fit.lme4)), resid(fit.lme4), pch=20, cex=0.7)
+lines(lowess((fitted(fit.lme4)), resid(fit.lme4)), col=2)
 hist(dfData$values, prob=T)
-lines(density(fitted(fit.lme1)))
+lines(density(fitted(fit.lme4)))
 
 ## fit model with stan
 library(rstan)
@@ -189,32 +197,56 @@ options(mc.cores = parallel::detectCores())
 stanDso = rstan::stan_model(file='tResponsePartialPooling.stan')
 
 str(dfData)
-m = model.matrix(values ~ Coef - 1, data=dfData)
+m1 = model.matrix(values ~ Coef.1 - 1, data=dfData)
+m2 = model.matrix(values ~ Coef.2 - 1, data=dfData)
+m3 = model.matrix(values ~ Coef.int - 1, data=dfData)
+m = cbind(m1, m2)#, m3)
 
 lStanData = list(Ntotal=nrow(dfData), Ncol=ncol(m), X=m,
-                 NscaleBatches=1, NBatchMap=c(rep(1, times=nlevels(dfData$Coef))),
+                 NscaleBatches=2, NBatchMap=c(rep(1, times=nlevels(dfData$Coef.1)),
+                                              rep(2, times=nlevels(dfData$Coef.2))),
+                                              #rep(3, times=nlevels(dfData$Coef.int))),
                  y=dfData$values)
 
 fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas', 'populationMean', 'sigmaPop', 'sigmaRan',
                                                                          'nu', 'mu'),
-                    cores=2)
+                    cores=2, control=list(adapt_delta=0.99, max_treedepth = 12))
 print(fit.stan, c('betas', 'populationMean', 'sigmaPop', 'sigmaRan', 'nu'), digits=3)
 
 traceplot(fit.stan, 'populationMean')
 traceplot(fit.stan, 'sigmaPop')
 traceplot(fit.stan, 'sigmaRan')
 
+## just using the one coefficient
+m = model.matrix(values ~ Coef.int - 1, data=dfData)
+
+lStanData = list(Ntotal=nrow(dfData), Ncol=ncol(m), X=m,
+                 NscaleBatches=1, NBatchMap=c(rep(1, times=nlevels(dfData$Coef.int))),
+                 y=dfData$values)
+
+fit.stan.2 = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas', 'populationMean', 'sigmaPop', 'sigmaRan',
+                                                                         'nu', 'mu'),
+                    cores=2)
+print(fit.stan.2, c('betas', 'populationMean', 'sigmaPop', 'sigmaRan', 'nu'), digits=3)
+
+traceplot(fit.stan.2, 'populationMean')
+traceplot(fit.stan.2, 'sigmaPop')
+traceplot(fit.stan.2, 'sigmaRan')
+
 m = cbind(extract(fit.stan)$sigmaRan, extract(fit.stan)$sigmaPop) 
 dim(m)
 m = log(m)
-colnames(m) = c('Treatment', 'Residual')
+colnames(m) = c('Treatment', 'Time', 'Residual')
 pairs(m, pch=20, cex=0.5, col='grey')
 
-df = stack(data.frame(m))
+df = stack(data.frame(m[,-3]))
 histogram(~ values | ind, data=df, xlab='Log SD')
+
 
 hist(dfData$values, prob=T)
 plot(density(dfData$values))
+## use appropriate model name e.g. fit.stan or fit.stan.2 to do model checks, in this case
+# fit.stan.2 is a better model.
 mFitted = extract(fit.stan)$mu
 
 apply(mFitted[sample(1:nrow(mFitted), size = 100), ], 1, function(x) lines(density(x)))
