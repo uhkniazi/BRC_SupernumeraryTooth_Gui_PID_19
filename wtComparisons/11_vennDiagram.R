@@ -256,6 +256,50 @@ library(lattice)
 xyplot(coef ~ time | SYMBOL, data=d.bk, type=c('l', 'p'), scales=list(relation='free', x=list(cex=0.7), y=list(cex=0.7)), 
        ylab='Model Estimated log Deflections from Intercept', main=list(label='40 Genes DE expressed at 3 time points in WT', cex=0.8))
 
+#### 3) To translate the data into a more meaningful biological context and to 
+# characterize more thoroughly sets of functionally related genes, is it possible
+# to organize the differentially expressed datasets into gene ontology groupings (figures)?
+library(GOstats)
+
+goTest = function(cvSeed, univ = keys(org.Mm.eg.db, 'ENTREZID')){
+  ## set up universe background
+  dfUniv = AnnotationDbi::select(org.Mm.eg.db, keys = univ, columns = c('GO'), keytype = 'ENTREZID')
+  dfUniv = na.omit(dfUniv)
+  univ = unique(dfUniv$ENTREZID)
+  
+  ## make hypergeometric test object for each type, CC, BP and MF
+  params = new('GOHyperGParams', geneIds=unique(cvSeed),
+               annotation='org.Mm.eg.db',
+               universeGeneIds=univ,
+               ontology='BP',
+               pvalueCutoff= 0.01,
+               conditional=FALSE,
+               testDirection='over')
+  
+  oGOStat = hyperGTest(params) 
+  return(oGOStat)
+}
+
+lGO.results = lapply(unique(dfCommonGenes$groups), function(group){
+  return(goTest(rownames(dfCommonGenes)[dfCommonGenes$groups == group]))
+})
+
+oFile.go = file('results/GO_groups.csv', 'wt')
+temp = sapply(unique(dfCommonGenes$groups), function(group){
+  p1 = paste('Contrast Comparison ', group)
+  df = summary(lGO.results[[group]])
+  p2 = paste(colnames(df), collapse = ',')
+  writeLines(p1, oFile.go)
+  writeLines(p2, oFile.go)
+  sapply(1:10, function(x){
+    p3 = gsub(',', replacement = '-', df[x,])
+    p3 = paste(p3, collapse=',')
+    writeLines(p3, oFile.go)
+  })
+})
+
+close(oFile.go)
+
 ################################################################################
 
 
