@@ -260,6 +260,7 @@ xyplot(coef ~ time | SYMBOL, data=d.bk, type=c('l', 'p'), scales=list(relation='
 # characterize more thoroughly sets of functionally related genes, is it possible
 # to organize the differentially expressed datasets into gene ontology groupings (figures)?
 library(GOstats)
+library(org.Mm.eg.db)
 
 goTest = function(cvSeed, univ = keys(org.Mm.eg.db, 'ENTREZID')){
   ## set up universe background
@@ -299,6 +300,52 @@ temp = sapply(unique(dfCommonGenes$groups), function(group){
 })
 
 close(oFile.go)
+
+#######################################################
+####### find tooth development related genes
+## a similar list was extracted from the IPA database
+dfGO = AnnotationDbi::select(org.Mm.eg.db, keys = rownames(dfCommonGenes), columns = c('GO'), keytype = 'ENTREZID')
+dfGO = dfGO[dfGO$ONTOLOGY == 'BP', ]
+dfGO = na.omit(dfGO)
+dim(dfGO)
+
+library(GO.db)
+columns(GO.db)
+dfGO = AnnotationDbi::select(GO.db, keys=as.character(unique(dfGO$GO)), columns=columns(GO.db), keytype='GOID')
+dim(dfGO)
+i = grep('tooth', dfGO$DEFINITION, ignore.case = T)
+length(i)
+dfGO[i,]
+dfGO.tooth = dfGO[i,]
+
+### work back to original gene list
+dfGO = AnnotationDbi::select(org.Mm.eg.db, keys = dfGO.tooth$GOID, keytype = c('GO'), columns = 'ENTREZID')
+dim(dfGO)
+head(dfGO)
+table(dfGO$ENTREZID %in% rownames(dfCommonGenes))
+cvGenes.tooth = dfGO$ENTREZID[(dfGO$ENTREZID %in% rownames(dfCommonGenes))]
+
+## go up to stan section to load the d.bk dataframe
+d.bk = d[as.character(d$split) %in% cvGenes.tooth,]
+## drop the mut samples
+i = grep('Mut', as.character(d.bk$fBatch))
+d.bk = d.bk[-i,]
+d.bk = droplevels.data.frame(d.bk)
+library(org.Mm.eg.db)
+df = AnnotationDbi::select(org.Mm.eg.db, keys = as.character(d.bk$split), columns = 'SYMBOL', keytype = 'ENTREZID')
+i = match(as.character(d.bk$split), df$ENTREZID)
+df = df[i,]
+d.bk$SYMBOL = df$SYMBOL
+identical(as.character(d.bk$split), df$ENTREZID)
+head(d.bk)
+d.bk$coef = colMeans(mCoef[,d.bk$cols])
+temp = gsub('WT:|Mut:', '', as.character(d.bk$fBatch))
+d.bk$time = factor(temp)
+library(lattice)
+xyplot(coef ~ time | SYMBOL, data=d.bk, type=c('l', 'p'), scales=list(relation='free', x=list(cex=0.7), y=list(cex=0.7)), 
+       ylab='Model Estimated log Deflections from Intercept', main=list(label='40 Genes DE expressed at 3 time points in WT', cex=0.8))
+#######################################################
+
 
 ################################################################################
 
