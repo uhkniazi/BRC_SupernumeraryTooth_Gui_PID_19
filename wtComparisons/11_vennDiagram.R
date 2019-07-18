@@ -343,7 +343,30 @@ temp = gsub('WT:|Mut:', '', as.character(d.bk$fBatch))
 d.bk$time = factor(temp)
 library(lattice)
 xyplot(coef ~ time | SYMBOL, data=d.bk, type=c('l', 'p'), scales=list(relation='free', x=list(cex=0.7), y=list(cex=0.7)), 
-       ylab='Model Estimated log Deflections from Intercept', main=list(label='40 Genes DE expressed at 3 time points in WT', cex=0.8))
+       ylab='Model Estimated log Deflections from Intercept', main=list(label='Tooth Development Genes DE expressed at 3 time points in WT', cex=0.8))
+
+## cluster the data on trends of expression
+m = split(d.bk$coef, f = d.bk$SYMBOL)
+m = do.call(rbind, m)
+hc = hclust(dist(t(scale(t(m)))))
+plot(hc, main='clustered')
+c = cutree(hc, h=1.3)
+table(c)
+dim(m)
+colnames(m) = c('13.5', '14.5', '15.5')
+head(m)
+df = stack(data.frame(m))
+head(df)
+df = data.frame(df, clustering=factor(c), symbols=rownames(m))
+head(df)
+df$ind = factor(gsub('X', '', df$ind))
+l = factor(df$clustering:df$symbols)
+l = levels(l)
+l = gsub('\\d:', '', l)
+xyplot(values ~ ind | clustering:symbols, data=df, type=c('l', 'p'), scales=list(relation='free', x=list(cex=0.7), y=list(cex=0.7)), 
+       ylab='Model Estimated log Deflections from Intercept', main=list(label='Tooth Development Genes DE expressed at 3 time points in WT', cex=0.8),
+       strip=strip.custom(factor.levels=l))
+
 #######################################################
 
 
